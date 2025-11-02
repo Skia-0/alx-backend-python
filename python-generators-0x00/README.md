@@ -1,58 +1,27 @@
-#!/usr/bin/python3
-"""
-1-batch_processing.py
+# python-generators-0x00 — seed.py
 
-Implements:
-- stream_users_in_batches(batch_size): generator yielding batches of user rows
-- batch_processing(batch_size): processes and prints users with age > 25
-"""
+## Purpose
+`seed.py` creates the `ALX_prodev` MySQL database, creates the `user_data` table and inserts rows from `user_data.csv`.
+It also exposes a simple generator `stream_rows()` that yields rows from a table one-by-one.
 
-from seed import connect_to_prodev
+## Required files
+- `user_data.csv` — CSV with columns: `user_id,name,email,age` (header optional). Example UUIDs expected.
 
+## Functions exported (used by tests)
+- `connect_db()` -> connect to MySQL server (no database)
+- `create_database(connection)` -> create `ALX_prodev` if missing
+- `connect_to_prodev()` -> connect to `ALX_prodev`
+- `create_table(connection)` -> create `user_data` table
+- `insert_data(connection, csv_path)` -> insert rows from CSV (skips invalid rows)
+- `stream_rows(connection, table='user_data', chunk_size=100)` -> generator yielding rows
 
-def stream_users_in_batches(batch_size):
-    """
-    Generator that yields batches of rows from user_data.
+## Usage (example)
+Provided `0-main.py` in tests uses:
+```python
+connection = seed.connect_db()
+seed.create_database(connection)
+connection.close()
 
-    Args:
-        batch_size (int): number of rows per batch
-
-    Yields:
-        list[dict]: each batch containing up to batch_size user dicts
-    """
-    connection = connect_to_prodev()
-    if not connection:
-        return
-
-    cursor = connection.cursor()
-    cursor.execute("SELECT user_id, name, email, age FROM user_data;")
-
-    batch = []
-    for row in cursor:
-        user = {
-            "user_id": row[0],
-            "name": row[1],
-            "email": row[2],
-            "age": int(row[3]),
-        }
-        batch.append(user)
-
-        if len(batch) == batch_size:
-            yield batch
-            batch = []
-
-    if batch:  # yield leftover rows
-        yield batch
-
-    cursor.close()
-    connection.close()
-
-
-def batch_processing(batch_size):
-    """
-    Processes batches and prints users over the age of 25.
-    """
-    for batch in stream_users_in_batches(batch_size):
-        for user in (u for u in batch if u["age"] > 25):
-            print(user)
-            print()
+connection = seed.connect_to_prodev()
+seed.create_table(connection)
+seed.insert_data(connection, 'user_data.csv')
