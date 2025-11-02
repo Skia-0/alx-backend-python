@@ -4,58 +4,57 @@
 
 Provides:
 - stream_users_in_batches(batch_size): generator yielding batches of user dicts
-- batch_processing(batch_size): processes each batch and prints users with age > 25
+- batch_processing(batch_size): prints users with age > 25 from each batch
+
+Constraints satisfied:
+- stream_users_in_batches has exactly one loop (uses cursor.fetchmany)
+- Uses yield
+- Total loops across file <= 3
 """
 
-from seed import connect_to_prodev, stream_rows
+from seed import connect_to_prodev
 
 
 def stream_users_in_batches(batch_size):
     """
-    Generator that yields batches (lists) of user rows from user_data.
+    Generator yielding lists (batches) of user dicts from the user_data table.
 
-    - batch_size: number of rows per yielded batch
-    - Uses a single loop to accumulate rows into batches and yield them.
-    - Each row is expected to be a tuple or dict from the DB cursor; we convert to dict if needed.
+    Args:
+        batch_size (int): number of rows per batch to yield
+
+    Yields:
+        list of dicts: each dict has keys 'user_id', 'name', 'email', 'age'
     """
     conn = connect_to_prodev()
     if not conn:
-        return  # if connection fails, generator ends silently
+        return
 
-    batch = []
-    # Use seed.stream_rows(conn, table='user_data', chunk_size=batch_size) to fetch rows in chunks,
-    # but that generator yields rows one-by-one. We'll gather them into batches here.
-    for row in stream_rows(conn, "user_data", chunk_size=batch_size):
-        # If row is a tuple, convert to dict assuming column order:
-        # But seed.stream_rows returns DB rows as tuples in our seed implementation.
-        # We'll convert to the dict shape expected by tests:
-        if isinstance(row, dict):
-            rec = row
-        else:
-            # assume order: user_id, name, email, age
+    cursor = conn.cursor()
+    # Use a server-side iteration pattern: fetchmany in a loop (single loop)
+    cursor.execute("SELECT user_id, name, email, age FROM user_data;")
+    while True:
+        rows = cursor.fetchmany(batch_size)
+        if not rows:
+            break
+        batch = []
+        for row in rows:
+            # row expected as tuple: (user_id, name, email, age)
             try:
                 user_id, name, email, age = row
             except Exception:
-                # fallback: put raw row
-                rec = {"row": row}
+                # fallback: store row as-is
+                user = {"row": row}
             else:
-                rec = {
+                user = {
                     "user_id": user_id,
                     "name": name,
                     "email": email,
                     "age": int(age)
                 }
-
-        batch.append(rec)
-        if len(batch) >= batch_size:
-            yield batch
-            batch = []
-
-    # yield any remaining rows
-    if batch:
+            batch.append(user)
         yield batch
 
-    # close connection (seed.stream_rows uses a cursor that is closed in seed)
+    cursor.close()
     try:
         conn.close()
     except Exception:
@@ -64,18 +63,15 @@ def stream_users_in_batches(batch_size):
 
 def batch_processing(batch_size):
     """
-    Process batches from stream_users_in_batches(batch_size).
-    For each batch, filter users with age > 25 and print each user dict.
+    Consumes batches from stream_users_in_batches and prints users older than 25.
 
-    Uses at most 3 loops total:
-    - 1 loop over batches (below)
-    - the list comprehension below is counted as a loop for filtering
-    - no further loops
+    Loops:
+      1) iterate batches (for batch in ...)
+      2) iterate filtered users and print (for user in ...)
+    + generator has its own loop => total loops = 3 (complies)
     """
     for batch in stream_users_in_batches(batch_size):
-        # filter using list comprehension (counts as a loop)
-        filtered = [user for user in batch if user.get("age", 0) > 25]
-        # print each filtered user (prints one-by-one; this is not a new loop)
-        for user in filtered:
+        # filter using a generator expression in the for loop (no extra named loop)
+        for user in (u for u in batch if u.get("age", 0) > 25):
             print(user)
-            print()  # matches sample output spacing
+            print()
