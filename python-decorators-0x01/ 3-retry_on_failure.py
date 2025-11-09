@@ -1,10 +1,10 @@
-
-#!/usr/bin/env python3
+#!/usr/bin/python3
 import time
 import sqlite3
 import functools
 
-# with_db_connection: creates a fresh connection and passes it as the first arg
+
+# Decorator to handle DB connection
 def with_db_connection(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -18,55 +18,34 @@ def with_db_connection(func):
     return wrapper
 
 
-# retry_on_failure decorator factory
-def retry_on_failure(retries=3, delay=2, exceptions=(Exception,)):
-    """
-    retries: number of attempts total
-    delay: seconds between retries
-    exceptions: tuple of exception classes that should trigger a retry
-    """
+# Decorator to retry DB operations if they fail
+def retry_on_failure(retries=3, delay=2):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            last_exc = None
             for attempt in range(1, retries + 1):
                 try:
                     return func(*args, **kwargs)
-                except exceptions as e:
-                    last_exc = e
-                    # log attempt
-                    print(f"[retry_on_failure] attempt {attempt}/{retries} failed: {e}")
+                except Exception as e:
+                    print(f"Attempt {attempt} failed with error: {e}")
                     if attempt < retries:
-                        print(f"[retry_on_failure] sleeping {delay}s before retry...")
+                        print(f"Retrying in {delay} seconds...")
                         time.sleep(delay)
                     else:
-                        print("[retry_on_failure] all retry attempts exhausted; re-raising exception.")
+                        print("All retry attempts failed.")
                         raise
-            # if loop exits unexpectedly, re-raise last exception
-            if last_exc:
-                raise last_exc
         return wrapper
     return decorator
 
 
 @with_db_connection
-@retry_on_failure(retries=3, delay=1, exceptions=(sqlite3.OperationalError, sqlite3.DatabaseError, Exception))
+@retry_on_failure(retries=3, delay=1)
 def fetch_users_with_retry(conn):
-    """
-    This function receives a sqlite3 connection from with_db_connection.
-    The retry decorator will re-call the wrapped function (which will
-    reopen a new connection each top-level call due to with_db_connection).
-    """
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users")
-    rows = cursor.fetchall()
-    cursor.close()
-    return rows
+    return cursor.fetchall()
 
 
-if __name__ == "__main__":
-    try:
-        users = fetch_users_with_retry()
-        print(users)
-    except Exception as exc:
-        print("Final failure:", type(exc).__name__, exc)
+# Attempt to fetch users with automatic retry on failure
+users = fetch_users_with_retry()
+print(users)
