@@ -1,7 +1,12 @@
-#!/usr/bin/env python3
+"""
+Unittest suite for utils module.
+Includes tests for access_nested_map, get_json, and memoize functions.
+"""
+
 import unittest
+from unittest.mock import patch, Mock
 from parameterized import parameterized
-from utils import access_nested_map
+from utils import access_nested_map, get_json, memoize
 
 
 class TestAccessNestedMap(unittest.TestCase):
@@ -9,56 +14,39 @@ class TestAccessNestedMap(unittest.TestCase):
     @parameterized.expand([
         ({"a": 1}, ("a",), 1),
         ({"a": {"b": 2}}, ("a",), {"b": 2}),
-        ({"a": {"b": 2}}, ("a", "b"), 2),
+        ({"a": {"b": 2}}, ("a", "b"), 2)
     ])
     def test_access_nested_map(self, nested_map, path, expected):
         self.assertEqual(access_nested_map(nested_map, path), expected)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-from parameterized import parameterized
-import unittest
-from utils import access_nested_map
-
-
-class TestAccessNestedMap(unittest.TestCase):
+class TestAccessNestedMapException(unittest.TestCase):
 
     @parameterized.expand([
-        ({}, ("a",), "'a'"),
-        ({"a": 1}, ("a", "b"), "'b'"),
+        ({}, ("a",)),
+        ({"a": 1}, ("a", "b"))
     ])
-    def test_access_nested_map_exception(self, nested_map, path, error_msg):
+    def test_access_nested_map_exception(self, nested_map, path):
         with self.assertRaises(KeyError) as context:
             access_nested_map(nested_map, path)
-        self.assertEqual(str(context.exception), error_msg)
+        # Verify exception message
+        self.assertTrue(str(path[-1]) in str(context.exception))
 
-
-from unittest.mock import patch, Mock
-from utils import get_json
 
 class TestGetJson(unittest.TestCase):
 
     @parameterized.expand([
         ("http://example.com", {"payload": True}),
-        ("http://holberton.io", {"payload": False}),
+        ("http://holberton.io", {"payload": False})
     ])
     def test_get_json(self, test_url, test_payload):
-        with patch('requests.get') as mock_get:
-            mock_resp = Mock()
-            mock_resp.json.return_value = test_payload
-            mock_get.return_value = mock_resp
-
+        with patch("utils.requests.get") as mock_get:
+            mock_get.return_value = Mock()
+            mock_get.return_value.json.return_value = test_payload
             result = get_json(test_url)
-
             mock_get.assert_called_once_with(test_url)
             self.assertEqual(result, test_payload)
 
-
-from unittest.mock import patch
-from utils import memoize
 
 class TestMemoize(unittest.TestCase):
 
@@ -71,22 +59,10 @@ class TestMemoize(unittest.TestCase):
             def a_property(self):
                 return self.a_method()
 
-        test_obj = TestClass()
-
-        with patch.object(TestClass, 'a_method', return_value=42) as mock_method:
-            # Call the property twice
-            first_call = test_obj.a_property
-            second_call = test_obj.a_property
-
-            # Check the return value is correct
-            self.assertEqual(first_call, 42)
-            self.assertEqual(second_call, 42)
-
-            # Ensure the original method was called only once
+        with patch.object(TestClass, "a_method", return_value=42) as mock_method:
+            obj = TestClass()
+            result1 = obj.a_property
+            result2 = obj.a_property
+            self.assertEqual(result1, 42)
+            self.assertEqual(result2, 42)
             mock_method.assert_called_once()
-
-
-
-
-
-
